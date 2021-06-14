@@ -1,0 +1,21 @@
+{
+    "name": "@letsdeel/rabbitmq",
+    "version": "1.0.0",
+    "description": "RabbitMQ routines",
+    "main": "index.js",
+    "engines": {
+        "node": ">=14"
+    },
+    "scripts": {},
+    "keywords": [],
+    "author": "Gilad Novik <gilad@letsdeel.com>",
+    "license": "ISC",
+    "devDependencies": {
+        "babel-eslint": "^10.1.0",
+        "eslint": "^7.28.0",
+        "eslint-plugin-node": "^11.1.0"
+    },
+    "peerDependencies": {
+        "amqplib": "^0.8.0"
+    }
+}

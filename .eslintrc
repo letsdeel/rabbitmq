@@ -1,0 +1,8 @@
+{
+    "root": true,
+    "parser": "babel-eslint",
+    "env": {"node": true},
+    "globals": {"__DEV__": true, "log": true},
+    "plugins": ["node"],
+    "extends": ["eslint:recommended", "plugin:node/recommended"]
+}
