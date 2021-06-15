@@ -40,6 +40,7 @@ module.exports = class RabbitMQ {
         if (prefetch) await channel.prefetch(prefetch);
         if (this.exchange) await channel.bindQueue(queue, this.exchange, queue);
         channel.consume(queue, async (msg) => {
+            if (!msg) return;
             try {
                 await handler(JSON.parse(msg.content.toString('utf8')));
                 await channel.ack(msg);
