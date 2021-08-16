@@ -11,6 +11,7 @@ module.exports = class RabbitMQ {
                     const connection = await amqplib.connect(url);
                     const channel = await connection.createChannel();
                     if ((this.exchange = exchange)) await channel.assertExchange(exchange, 'x-delayed-message', {arguments: {'x-delayed-type': 'direct'}});
+                    this.connection = connection;
                     return channel;
                 } catch (err) {
                     if (__DEV__ && err.code == 'ECONNREFUSED') {
@@ -49,5 +50,9 @@ module.exports = class RabbitMQ {
                 await channel.nack(msg);
             }
         });
+    }
+
+    async close() {
+        await this.connection?.close();
     }
 };
