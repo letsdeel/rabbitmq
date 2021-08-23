@@ -54,5 +54,9 @@ module.exports = class RabbitMQ {
 
     async close() {
         await this.connection?.close();
+        delete this.connection;
+        delete this.exchange;
+        this.channel = Promise.reject(new Error('Closed connection'));
+        this.queues = {};
     }
 };
