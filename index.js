@@ -1,62 +1,78 @@
 'use strict';
+const EventEmitter = require('events');
 const amqplib = require('amqplib');
 
-module.exports = class RabbitMQ {
-    constructor(url, exchange) {
-        this.queues = {};
-        this.channel = (async () => {
-            for (;;) {
-                try {
-                    log.debug('Connecting to RabbitMQ...');
-                    const connection = await amqplib.connect(url);
-                    const channel = await connection.createChannel();
-                    if ((this.exchange = exchange)) await channel.assertExchange(exchange, 'x-delayed-message', {arguments: {'x-delayed-type': 'direct'}});
-                    this.connection = connection;
-                    return channel;
-                } catch (err) {
-                    if (__DEV__ && err.code == 'ECONNREFUSED') {
-                        await new Promise((resolve) => setTimeout(resolve, 1000));
-                        continue;
+module.exports = class RabbitMQ extends EventEmitter {
+    constructor(url, exchange = '') {
+        super();
+        Object.assign(this, {url, exchange, queues: {}});
+        (function connect(retry) {
+            this.connection = (async () => {
+                for (;;) {
+                    try {
+                        log.debug('Connecting to RabbitMQ...');
+                        const connection = await amqplib.connect(this.url);
+                        this.channel = await connection.createChannel();
+                        if (this.exchange) await this.channel.assertExchange(this.exchange, 'x-delayed-message', {arguments: {'x-delayed-type': 'direct'}});
+                        connection.on('close', (err) => {
+                            setImmediate(() => this.emit('close'));
+                            if (!err) return;
+                            delete this.channel;
+                            this.queues = {};
+                            connect.call(this, 3000);
+                        });
+                        setImmediate(() => this.emit('connect', this));
+                        return connection;
+                    } catch (err) {
+                        if (retry || (global.__DEV__ && err.code == 'ECONNREFUSED')) {
+                            await new Promise((resolve) => setTimeout(resolve, retry || 1000));
+                            continue;
+                        }
+                        delete this.exchange;
+                        delete this.channel;
+                        delete this.url;
+                        this.emit('error', err);
                     }
-                    throw err;
                 }
-            }
-        })();
+            })();
+        }.call(this));
     }
 
     async assertQueue(queue) {
-        const channel = await this.channel;
-        if (!this.queues[queue]) this.queues[queue] = channel.assertQueue(queue);
+        await this.connection;
+        if (!this.queues[queue]) this.queues[queue] = this.channel.assertQueue(queue);
         return await this.queues[queue];
     }
 
     async send(queue, content, {delay} = {}) {
         await this.assertQueue(queue);
-        return await (await this.channel).publish(this.exchange || '', queue, Buffer.from(JSON.stringify(content)), delay ? {headers: {'x-delay': delay}} : {});
+        return await this.channel.publish(this.exchange, queue, Buffer.from(JSON.stringify(content)), delay ? {headers: {'x-delay': delay}} : {});
     }
 
     async consume(queue, handler, {prefetch} = {}) {
         await this.assertQueue(queue);
-        const channel = await this.channel;
-        if (prefetch) await channel.prefetch(prefetch);
-        if (this.exchange) await channel.bindQueue(queue, this.exchange, queue);
-        channel.consume(queue, async (msg) => {
+        if (prefetch) await this.channel.prefetch(prefetch);
+        if (this.exchange) await this.channel.bindQueue(queue, this.exchange, queue);
+        this.channel.consume(queue, async (msg) => {
             if (!msg) return;
             try {
                 await handler(JSON.parse(msg.content.toString('utf8')));
-                await channel.ack(msg);
+                await this.channel.ack(msg);
             } catch (err) {
                 log.error({err, msg: msg.content.toString('utf8')});
-                await channel.nack(msg);
+                await this.channel.nack(msg);
             }
         });
     }
 
     async close() {
-        await this.connection?.close();
-        delete this.connection;
+        if (!this.channel) return;
+        const connection = await this.connection;
+        await connection.close();
+        delete this.channel;
         delete this.exchange;
-        this.channel = Promise.reject(new Error('Closed connection'));
+        delete this.url;
+        this.connection = Promise.reject(new Error('RabbitMQ connection is closed'));
         this.queues = {};
     }
 };

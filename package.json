@@ -1,12 +1,14 @@
 {
     "name": "@letsdeel/rabbitmq",
-    "version": "1.0.0",
+    "version": "1.1.0",
     "description": "RabbitMQ routines",
     "main": "index.js",
     "engines": {
         "node": ">=14"
     },
-    "scripts": {},
+    "scripts": {
+        "rabbitmq": "docker run -p 5672:5672 heidiks/rabbitmq-delayed-message-exchange:latest"
+    },
     "keywords": [],
     "author": "Gilad Novik <gilad@letsdeel.com>",
     "license": "ISC",
