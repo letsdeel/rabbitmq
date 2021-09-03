@@ -2,6 +2,9 @@
 const EventEmitter = require('events');
 const amqplib = require('amqplib');
 
+const NACK_DELAY = 5000;
+const CONNECT_RETRY_DELAY = 3000;
+
 module.exports = class RabbitMQ extends EventEmitter {
     constructor(url, exchange = '') {
         super();
@@ -19,7 +22,7 @@ module.exports = class RabbitMQ extends EventEmitter {
                             if (!err) return;
                             delete this.channel;
                             this.queues = {};
-                            connect.call(this, 3000);
+                            connect.call(this, CONNECT_RETRY_DELAY);
                         });
                         setImmediate(() => this.emit('connect', this));
                         return connection;
@@ -61,7 +64,10 @@ module.exports = class RabbitMQ extends EventEmitter {
             } catch (err) {
                 log.error({err, msg: msg.content.toString('utf8')});
                 if (err instanceof SyntaxError) await this.channel.ack(msg);
-                else await this.channel.nack(msg);
+                else {
+                    await new Promise((resolve) => setTimeout(resolve, NACK_DELAY));
+                    await this.channel.nack(msg);
+                }
             }
         });
     }
