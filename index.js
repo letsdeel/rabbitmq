@@ -13,19 +13,19 @@ module.exports = class RabbitMQ extends EventEmitter {
             this.connection = (async () => {
                 for (;;) {
                     try {
-                        // log.debug('Connecting to RabbitMQ...');
+                        log.debug('Connecting to RabbitMQ...');
                         const connection = await amqplib.connect(this.url);
                         this.channel = await connection.createChannel();
 
                         if (this.exchange) {
                             await this.channel.assertExchange(`${this.exchange}_${DLX_NAME}`, 'fanout');
-
                             await this.channel.assertQueue(`${this.exchange}_${DLQ_NAME}`, {
                                 arguments: {
                                     'x-dead-letter-exchange': this.exchange,
-                                    'x-message-ttl': 5000,
+                                    'x-message-ttl': 1000 * 60 * 3,
                                 },
                             });
+
                             await this.channel.assertExchange(this.exchange, 'x-delayed-message', {arguments: {'x-delayed-type': 'direct'}});
                         }
                         connection.on('close', (err) => {
@@ -56,8 +56,6 @@ module.exports = class RabbitMQ extends EventEmitter {
         await this.connection;
         if (!this.queues[queue])
             this.queues[queue] = this.channel.assertQueue(queue, {
-                durable: true,
-                autoDelete: false,
                 arguments: {
                     'x-dead-letter-exchange': `${this.exchange}_${DLX_NAME}`,
                 },
@@ -84,9 +82,9 @@ module.exports = class RabbitMQ extends EventEmitter {
                 await handler(JSON.parse(msg.content.toString('utf8')));
                 await this.channel.ack(msg);
             } catch (err) {
-                console.log({err, msg: msg.content.toString('utf8')});
+                log.error({err, msg: msg.content.toString('utf8')});
                 if (err instanceof SyntaxError) await this.channel.ack(msg);
-                else await this.channel.reject(msg, false);
+                else await this.channel.nack(msg, false, !this.exchange);
             }
         });
     }
