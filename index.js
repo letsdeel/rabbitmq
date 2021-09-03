@@ -2,7 +2,7 @@
 const EventEmitter = require('events');
 const amqplib = require('amqplib');
 
-const NACK_DELAY = 30000;
+const NACK_DELAY = 1000 * 60 * 3;
 const CONNECT_RETRY_DELAY = 3000;
 
 module.exports = class RabbitMQ extends EventEmitter {
