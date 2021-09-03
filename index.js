@@ -60,7 +60,8 @@ module.exports = class RabbitMQ extends EventEmitter {
                 await this.channel.ack(msg);
             } catch (err) {
                 log.error({err, msg: msg.content.toString('utf8')});
-                await this.channel.nack(msg);
+                if (err instanceof SyntaxError) await this.channel.ack(msg);
+                else await this.channel.nack(msg);
             }
         });
     }
