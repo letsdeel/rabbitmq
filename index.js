@@ -4,7 +4,9 @@ const amqplib = require('amqplib');
 
 const RYX_NAME = 'RetryExchange';
 const RYQ_NAME = 'RetryQueue';
-const RETRY_TIMEOUT = 1000 * 60 * 5;
+const RETRY_TIMEOUT = 1000 * 5 * 60;
+
+const SEND_TO_DLQ_AFTER = 5;
 const DLQ_NAME = 'DeadLetterQueue';
 
 module.exports = class RabbitMQ extends EventEmitter {
@@ -84,13 +86,12 @@ module.exports = class RabbitMQ extends EventEmitter {
             } catch (err) {
                 log.error({err, msg: msg.content.toString('utf8')});
 
-                const headers = msg.properties?.headers;
-                if (!this.exchange || err instanceof SyntaxError || msg.properties?.headers['x-death']?.length) {
+                if (!this.exchange || err instanceof SyntaxError || msg.properties?.headers['x-death']?.[0]?.count >= SEND_TO_DLQ_AFTER) {
                     await this.channel.assertQueue(DLQ_NAME);
                     await this.channel.publish('', DLQ_NAME, Buffer.from(JSON.stringify(msg)));
                     await this.channel.ack(msg);
                 } else {
-                    await this.channel.nack(msg, false, !this.exchange);
+                    await this.channel.nack(msg, false, false);
                 }
             }
         });
