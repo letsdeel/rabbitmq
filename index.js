@@ -2,7 +2,9 @@
 const EventEmitter = require('events');
 const amqplib = require('amqplib');
 
-const DLX_NAME = 'DeadLetterExchange';
+const RYX_NAME = 'RetryExchange';
+const RYQ_NAME = 'RetryQueue';
+const RETRY_TIMEOUT = 1000 * 60 * 5;
 const DLQ_NAME = 'DeadLetterQueue';
 
 module.exports = class RabbitMQ extends EventEmitter {
@@ -18,13 +20,14 @@ module.exports = class RabbitMQ extends EventEmitter {
                         this.channel = await connection.createChannel();
 
                         if (this.exchange) {
-                            await this.channel.assertExchange(`${this.exchange}_${DLX_NAME}`, 'fanout');
-                            await this.channel.assertQueue(`${this.exchange}_${DLQ_NAME}`, {
+                            await this.channel.assertExchange(`${this.exchange}_${RYX_NAME}`, 'fanout');
+                            await this.channel.assertQueue(`${this.exchange}_${RYQ_NAME}`, {
                                 arguments: {
                                     'x-dead-letter-exchange': this.exchange,
-                                    'x-message-ttl': 1000 * 60 * 3,
+                                    'x-message-ttl': RETRY_TIMEOUT,
                                 },
                             });
+                            await this.channel.bindQueue(`${this.exchange}_${RYQ_NAME}`, `${this.exchange}_${RYX_NAME}`, '#');
 
                             await this.channel.assertExchange(this.exchange, 'x-delayed-message', {arguments: {'x-delayed-type': 'direct'}});
                         }
@@ -57,7 +60,7 @@ module.exports = class RabbitMQ extends EventEmitter {
         if (!this.queues[queue])
             this.queues[queue] = this.channel.assertQueue(queue, {
                 arguments: {
-                    'x-dead-letter-exchange': `${this.exchange}_${DLX_NAME}`,
+                    'x-dead-letter-exchange': `${this.exchange}_${RYX_NAME}`,
                 },
             });
         return await this.queues[queue];
@@ -71,10 +74,7 @@ module.exports = class RabbitMQ extends EventEmitter {
     async consume(queue, handler, {prefetch} = {}) {
         await this.assertQueue(queue);
         if (prefetch) await this.channel.prefetch(prefetch);
-        if (this.exchange) {
-            await this.channel.bindQueue(queue, this.exchange, queue);
-            await this.channel.bindQueue(`${this.exchange}_${DLQ_NAME}`, `${this.exchange}_${DLX_NAME}`, '#');
-        }
+        if (this.exchange) await this.channel.bindQueue(queue, this.exchange, queue);
 
         this.channel.consume(queue, async (msg) => {
             if (!msg) return;
@@ -83,8 +83,15 @@ module.exports = class RabbitMQ extends EventEmitter {
                 await this.channel.ack(msg);
             } catch (err) {
                 log.error({err, msg: msg.content.toString('utf8')});
-                if (err instanceof SyntaxError) await this.channel.ack(msg);
-                else await this.channel.nack(msg, false, !this.exchange);
+
+                const headers = msg.properties?.headers;
+                if (!this.exchange || err instanceof SyntaxError || msg.properties?.headers['x-death']?.length) {
+                    await this.channel.assertQueue(DLQ_NAME);
+                    await this.channel.publish('', DLQ_NAME, Buffer.from(JSON.stringify(msg)));
+                    await this.channel.ack(msg);
+                } else {
+                    await this.channel.nack(msg, false, !this.exchange);
+                }
             }
         });
     }
