@@ -59,7 +59,10 @@ module.exports = class RabbitMQ extends EventEmitter {
 
     async assertQueue(queue) {
         await this.connection;
-        if (!this.queues[queue]) this.queues[queue] = this.channel.assertQueue(queue);
+        if (!this.queues[queue]) {
+            const t = await this.channel.checkQueue(queue);
+            this.queues[queue] = this.channel.assertQueue(queue, {arguments: {'x-dead-letter-exchange': `${this.exchange}_${RYX_NAME}`}});
+        }
         return await this.queues[queue];
     }
 
