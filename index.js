@@ -22,6 +22,8 @@ module.exports = class RabbitMQ extends EventEmitter {
                         this.channel = await connection.createChannel();
 
                         if (this.exchange) {
+                            await this.channel.assertExchange(this.exchange, 'x-delayed-message', {arguments: {'x-delayed-type': 'direct'}});
+
                             await this.channel.assertExchange(`${this.exchange}_${RYX_NAME}`, 'fanout');
                             await this.channel.assertQueue(`${this.exchange}_${RYQ_NAME}`, {
                                 arguments: {
@@ -30,8 +32,6 @@ module.exports = class RabbitMQ extends EventEmitter {
                                 },
                             });
                             await this.channel.bindQueue(`${this.exchange}_${RYQ_NAME}`, `${this.exchange}_${RYX_NAME}`, '#');
-
-                            await this.channel.assertExchange(this.exchange, 'x-delayed-message', {arguments: {'x-delayed-type': 'direct'}});
                         }
                         connection.on('close', (err) => {
                             setImmediate(() => this.emit('close'));
@@ -59,12 +59,7 @@ module.exports = class RabbitMQ extends EventEmitter {
 
     async assertQueue(queue) {
         await this.connection;
-        if (!this.queues[queue])
-            this.queues[queue] = this.channel.assertQueue(queue, {
-                arguments: {
-                    'x-dead-letter-exchange': `${this.exchange}_${RYX_NAME}`,
-                },
-            });
+        if (!this.queues[queue]) this.queues[queue] = this.channel.assertQueue(queue, {arguments: {'x-dead-letter-exchange': `${this.exchange}_${RYX_NAME}`}});
         return await this.queues[queue];
     }
 
@@ -88,7 +83,7 @@ module.exports = class RabbitMQ extends EventEmitter {
 
                 if (!this.exchange || err instanceof SyntaxError || msg.properties?.headers['x-death']?.[0]?.count >= SEND_TO_DLQ_AFTER) {
                     await this.channel.assertQueue(DLQ_NAME);
-                    await this.channel.publish('', DLQ_NAME, Buffer.from(JSON.stringify(msg)));
+                    await this.channel.publish('', DLQ_NAME, Buffer.from(JSON.stringify({...msg, content: msg.content.toString('utf8')})));
                     await this.channel.ack(msg);
                 } else {
                     await this.channel.nack(msg, false, false);
