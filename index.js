@@ -59,13 +59,18 @@ module.exports = class RabbitMQ extends EventEmitter {
 
     async assertQueue(queue) {
         await this.connection;
-        if (!this.queues[queue]) this.queues[queue] = this.channel.assertQueue(queue, {arguments: {'x-dead-letter-exchange': `${this.exchange}_${RYX_NAME}`}});
+        if (!this.queues[queue]) this.queues[queue] = this.channel.assertQueue(queue);
         return await this.queues[queue];
     }
 
     async send(queue, content, {delay} = {}) {
         await this.assertQueue(queue);
-        return await this.channel.publish(this.exchange, queue, Buffer.from(JSON.stringify(content)), delay ? {headers: {'x-delay': delay}} : {});
+        return await this.channel.publish(
+            this.exchange,
+            queue,
+            Buffer.from(JSON.stringify(content)),
+            delay ? {headers: {'x-delay': delay, 'x-dead-letter-exchange': `${this.exchange}_${RYX_NAME}`}} : {}
+        );
     }
 
     async consume(queue, handler, {prefetch} = {}) {
