@@ -99,7 +99,7 @@ module.exports = class RabbitMQ extends EventEmitter {
         delete this.channel;
         delete this.exchange;
         delete this.url;
-        this.connection = Promise.reject(new Error('RabbitMQ connection is closed'));
+        delete this.connection;
         this.queues = {};
     }
 };
