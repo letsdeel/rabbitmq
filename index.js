@@ -40,6 +40,17 @@ module.exports = class RabbitMQ extends EventEmitter {
                             this.queues = {};
                             connect.call(this, 3000);
                         });
+                        connection.on('error', async (err) => {
+                            if (err.toString().includes('x-dead-letter-exchange')) {
+                                const connection = await amqplib.connect(this.url);
+                                const channel = await connection.createChannel();
+                                const [, queue] = err.toString().match(/\bfor queue '(?<token>.*)' in vhost\b/i);
+                                const t = await channel.deleteQueue(queue, {});
+                                delete this.channel;
+                                this.queues = {};
+                            }
+                            this.emit('error', err);
+                        });
                         setImmediate(() => this.emit('connect', this));
                         return connection;
                     } catch (err) {
@@ -59,20 +70,13 @@ module.exports = class RabbitMQ extends EventEmitter {
 
     async assertQueue(queue) {
         await this.connection;
-        if (!this.queues[queue]) {
-            const t = await this.channel.checkQueue(queue);
-            this.queues[queue] = this.channel.assertQueue(queue, {arguments: {'x-dead-letter-exchange': `${this.exchange}_${RYX_NAME}`}});
-        }
+        if (!this.queues[queue]) this.queues[queue] = this.channel.assertQueue(queue, {arguments: {'x-dead-letter-exchange': `${this.exchange}_${RYX_NAME}`}});
         return await this.queues[queue];
     }
 
     async send(queue, content, {delay} = {}) {
         await this.assertQueue(queue);
-        return await this.channel.publish(this.exchange, queue, Buffer.from(JSON.stringify(content)), {
-            headers: delay
-                ? {'x-delay': delay, 'x-dead-letter-exchange': `${this.exchange}_${RYX_NAME}`}
-                : {'x-dead-letter-exchange': `${this.exchange}_${RYX_NAME}`},
-        });
+        return await this.channel.publish(this.exchange, queue, Buffer.from(JSON.stringify(content)), delay ? {headers: {'x-delay': delay}} : {});
     }
 
     async consume(queue, handler, {prefetch} = {}) {
