@@ -40,6 +40,17 @@ module.exports = class RabbitMQ extends EventEmitter {
                             this.queues = {};
                             connect.call(this, 3000);
                         });
+                        connection.on('error', async (err) => {
+                            if (err.toString().includes('x-dead-letter-exchange')) {
+                                const connection = await amqplib.connect(this.url);
+                                const channel = await connection.createChannel();
+                                const [, queue] = err.toString().match(/\bfor queue '(?<token>.*)' in vhost\b/i);
+                                const t = await channel.deleteQueue(queue, {});
+                                delete this.channel;
+                                this.queues = {};
+                            }
+                            this.emit('error', err);
+                        });
                         setImmediate(() => this.emit('connect', this));
                         return connection;
                     } catch (err) {
