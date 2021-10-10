@@ -92,7 +92,11 @@ module.exports = class RabbitMQ extends EventEmitter {
             } catch (err) {
                 log.error({err, msg: msg.content.toString('utf8')});
 
-                if (!this.exchange || err instanceof SyntaxError || msg.properties?.headers['x-death']?.[0]?.count >= SEND_TO_DLQ_AFTER) {
+                if (
+                    !this.exchange ||
+                    err instanceof SyntaxError ||
+                    (msg.properties?.headers && msg.properties?.headers['x-death']?.[0]?.count >= SEND_TO_DLQ_AFTER)
+                ) {
                     await this.channel.assertQueue(DLQ_NAME);
                     await this.channel.publish('', DLQ_NAME, Buffer.from(JSON.stringify({...msg, content: msg.content.toString('utf8')})));
                     await this.channel.ack(msg);
