@@ -45,7 +45,7 @@ module.exports = class RabbitMQ extends EventEmitter {
                                 const connection = await amqplib.connect(this.url);
                                 const channel = await connection.createChannel();
                                 const [, queue] = err.toString().match(/\bfor queue '(?<token>.*)' in vhost\b/i);
-                                const t = await channel.deleteQueue(queue, {});
+                                await channel.deleteQueue(queue, {});
                                 delete this.channel;
                                 this.queues = {};
                             }
