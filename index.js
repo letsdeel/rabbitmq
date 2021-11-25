@@ -22,7 +22,7 @@ module.exports = class RabbitMQ extends EventEmitter {
                         this.channel = await connection.createChannel();
 
                         if (this.exchange) {
-                            await this.channel.assertExchange(this.exchange, 'x-delayed-message', {arguments: {'x-delayed-type': 'direct'}});
+                            // await this.channel.assertExchange(this.exchange, 'x-delayed-message', {arguments: {'x-delayed-type': 'direct'}});
 
                             await this.channel.assertExchange(`${this.exchange}_${RYX_NAME}`, 'fanout');
                             await this.channel.assertQueue(`${this.exchange}_${RYQ_NAME}`, {
@@ -76,7 +76,7 @@ module.exports = class RabbitMQ extends EventEmitter {
 
     async send(queue, content, {delay} = {}) {
         await this.assertQueue(queue);
-        return await this.channel.publish(this.exchange, queue, Buffer.from(JSON.stringify(content)), delay ? {headers: {'x-delay': delay}} : {});
+        return await this.channel.publish(this.exchange, queue, Buffer.from(JSON.stringify(content))/*, delay ? {headers: {'x-delay': delay}} : {}*/);
     }
 
     async consume(queue, handler, {prefetch} = {}) {
@@ -92,7 +92,7 @@ module.exports = class RabbitMQ extends EventEmitter {
             } catch (err) {
                 log.error({err, msg: msg.content.toString('utf8')});
 
-                if (!this.exchange || err instanceof SyntaxError || msg.properties?.headers?.['x-death']?.[0]?.count >= SEND_TO_DLQ_AFTER) {
+                if (!this.exchange || err instanceof SyntaxError || msg.properties?.headers['x-death']?.[0]?.count >= SEND_TO_DLQ_AFTER) {
                     await this.channel.assertQueue(DLQ_NAME);
                     await this.channel.publish('', DLQ_NAME, Buffer.from(JSON.stringify({...msg, content: msg.content.toString('utf8')})));
                     await this.channel.ack(msg);
