@@ -23,7 +23,6 @@ module.exports = class RabbitMQ extends EventEmitter {
 
                         if (this.exchange) {
                             await this.channel.assertExchange(this.exchange, 'x-delayed-message', {arguments: {'x-delayed-type': 'direct'}});
-
                             await this.channel.assertExchange(`${this.exchange}_${RYX_NAME}`, 'fanout');
                             await this.channel.assertQueue(`${this.exchange}_${RYQ_NAME}`, {
                                 arguments: {
@@ -90,14 +89,15 @@ module.exports = class RabbitMQ extends EventEmitter {
                 await handler(JSON.parse(msg.content.toString('utf8')));
                 await this.channel.ack(msg);
             } catch (err) {
-                log.error({err, msg: msg.content.toString('utf8')});
-
-                if (!this.exchange || err instanceof SyntaxError || msg.properties?.headers?.['x-death']?.[0]?.count >= SEND_TO_DLQ_AFTER) {
-                    await this.channel.assertQueue(DLQ_NAME);
-                    await this.channel.publish('', DLQ_NAME, Buffer.from(JSON.stringify({...msg, content: msg.content.toString('utf8')})));
-                    await this.channel.ack(msg);
-                } else {
-                    await this.channel.nack(msg, false, false);
+                log.error({err, msg: msg.content.toString('utf8'), fields: msg.fields, properties: msg.properties});
+                try {
+                    if (!this.exchange || err instanceof SyntaxError || msg.properties?.headers?.['x-death']?.[0]?.count >= SEND_TO_DLQ_AFTER) {
+                        await this.channel.assertQueue(DLQ_NAME);
+                        await this.channel.publish('', DLQ_NAME, Buffer.from(JSON.stringify({...msg, content: msg.content.toString('utf8')})));
+                        await this.channel.ack(msg);
+                    } else await this.channel.nack(msg, false, false);
+                } catch (err) {
+                    log.error({err, text: 'Something went really wrong!!'});
                 }
             }
         });
