@@ -85,20 +85,33 @@ module.exports = class RabbitMQ extends EventEmitter {
 
         this.channel.consume(queue, async (msg) => {
             if (!msg) return;
+            let content;
             try {
-                await handler(JSON.parse(msg.content.toString('utf8')));
+                content = msg.content?.toString('utf8');
+            } catch (err){
+                log.error({err, msg: 'Content not well formatted', content: msg.content});
+            }
+
+            let timeout = setTimeout(() => {
+                timeout = null;
+                log.warn(`Message ${content} taking too much to be processed.`);
+            }, 1740000); //29m
+            try {
+                await handler(JSON.parse(content));
                 await this.channel.ack(msg);
             } catch (err) {
-                log.error({err, msg: msg.content.toString('utf8'), fields: msg.fields, properties: msg.properties});
+                log.error({err, msg: content, fields: msg.fields, properties: msg.properties});
                 try {
                     if (!this.exchange || err instanceof SyntaxError || msg.properties?.headers?.['x-death']?.[0]?.count >= SEND_TO_DLQ_AFTER) {
                         await this.channel.assertQueue(DLQ_NAME);
-                        await this.channel.publish('', DLQ_NAME, Buffer.from(JSON.stringify({...msg, content: msg.content.toString('utf8')})));
+                        await this.channel.publish('', DLQ_NAME, Buffer.from(JSON.stringify({...msg, content})));
                         await this.channel.ack(msg);
                     } else await this.channel.nack(msg, false, false);
                 } catch (err) {
                     log.error({err, text: 'Something went really wrong!!'});
                 }
+            } finally {
+                if (timeout) clearTimeout(timeout);
             }
         });
     }
