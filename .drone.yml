@@ -10,6 +10,25 @@ trigger:
     - push
 
 steps:
+  - name: bump minor version
+    image: 221581667315.dkr.ecr.eu-west-1.amazonaws.com/deel-devops/nodeawscli:16.1
+    commands:
+      - export CODEARTIFACT_AUTH_TOKEN=`aws codeartifact get-authorization-token --domain npm --domain-owner 221581667315 --query authorizationToken --output text --region eu-west-1`
+      - npm version minor --commit-hooks=false -m "[CI SKIP] Automatically bumped version to %s" --force
+    environment:
+      NODE_AUTH_TOKEN:
+        from_secret: git_pat
+      AWS_ACCESS_KEY_ID:
+        from_secret: AWS_ACCESS_KEY_ID
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: AWS_SECRET_ACCESS_KEY
+      AWS_MAX_ATTEMPTS: 5
+    when:
+      branch:
+        exclude:
+          - master
+          - dev
+
   - name: install dependencies
     image: 221581667315.dkr.ecr.eu-west-1.amazonaws.com/deel-devops/nodeawscli:16.1
     commands:
@@ -21,6 +40,8 @@ steps:
       AWS_SECRET_ACCESS_KEY:
         from_secret: AWS_SECRET_ACCESS_KEY
       AWS_MAX_ATTEMPTS: 5
+    depends_on:
+      - "bump minor version"
 
   - name: publish to codeartifact
     image: 221581667315.dkr.ecr.eu-west-1.amazonaws.com/deel-devops/nodeawscli:16.1
