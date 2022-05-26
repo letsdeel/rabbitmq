@@ -1,0 +1,110 @@
+kind: pipeline
+type: kubernetes
+name: rabbitmq
+
+node_selector:
+  eks.amazonaws.com/nodegroup: automation
+
+trigger:
+  event:
+    - push
+
+steps:
+  - name: bump patch version
+    image: 221581667315.dkr.ecr.eu-west-1.amazonaws.com/deel-devops/nodeawscli:16.1
+    commands:
+      - export CODEARTIFACT_AUTH_TOKEN=`aws codeartifact get-authorization-token --domain npm --domain-owner 221581667315 --query authorizationToken --output text --region eu-west-1`
+      - npm version patch --commit-hooks=false -m "[CI SKIP] Automatically bumped version to %s" --force
+    environment:
+      NODE_AUTH_TOKEN:
+        from_secret: git_pat
+      AWS_ACCESS_KEY_ID:
+        from_secret: AWS_ACCESS_KEY_ID
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: AWS_SECRET_ACCESS_KEY
+      AWS_MAX_ATTEMPTS: 5
+    when:
+      branch:
+        exclude:
+          - master
+          - dev
+
+  - name: bump minor version
+    image: 221581667315.dkr.ecr.eu-west-1.amazonaws.com/deel-devops/nodeawscli:16.1
+    commands:
+      - export CODEARTIFACT_AUTH_TOKEN=`aws codeartifact get-authorization-token --domain npm --domain-owner 221581667315 --query authorizationToken --output text --region eu-west-1`
+      - npm version minor --commit-hooks=false -m "[CI SKIP] Automatically bumped version to %s" --force
+    environment:
+      NODE_AUTH_TOKEN:
+        from_secret: git_pat
+      AWS_ACCESS_KEY_ID:
+        from_secret: AWS_ACCESS_KEY_ID
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: AWS_SECRET_ACCESS_KEY
+      AWS_MAX_ATTEMPTS: 5
+    when:
+      branch:
+          - master
+          - dev
+
+  - name: install dependencies
+    image: 221581667315.dkr.ecr.eu-west-1.amazonaws.com/deel-devops/nodeawscli:16.1
+    commands:
+      - export CODEARTIFACT_AUTH_TOKEN=`aws codeartifact get-authorization-token --domain npm --domain-owner 221581667315 --query authorizationToken --output text --region eu-west-1`
+      - npm install
+    environment:
+      AWS_ACCESS_KEY_ID:
+        from_secret: AWS_ACCESS_KEY_ID
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: AWS_SECRET_ACCESS_KEY
+      AWS_MAX_ATTEMPTS: 5
+    depends_on:
+      - "bump patch version"
+      - "bump minor version"
+
+  - name: publish to codeartifact
+    image: 221581667315.dkr.ecr.eu-west-1.amazonaws.com/deel-devops/nodeawscli:16.1
+    commands:
+      - export CODEARTIFACT_AUTH_TOKEN=`aws codeartifact get-authorization-token --domain npm --domain-owner 221581667315 --query authorizationToken --output text --region eu-west-1`
+      - npm publish
+    environment:
+      AWS_ACCESS_KEY_ID:
+        from_secret: AWS_ACCESS_KEY_ID
+      AWS_SECRET_ACCESS_KEY:
+        from_secret: AWS_SECRET_ACCESS_KEY
+      AWS_MAX_ATTEMPTS: 5
+    depends_on:
+      - "install dependencies"
+
+  - name: slack-notification
+    image: 221581667315.dkr.ecr.eu-west-1.amazonaws.com/plugins/slack:latest
+    settings:
+      webhook:
+        from_secret: slack_webhook_deployment
+      channel: deployment
+      link_names: true
+      icon_url: https://miro.medium.com/max/512/1*N7vcpmENqVHTLhgjbrbsFg.jpeg
+      template: >
+        {{#if build.pull }}
+          *{{#success build.status}}✔{{ else }}✘{{/success}} {{ uppercasefirst build.status }}*: <https://github.com/{{ repo.owner }}/{{ repo.name }}/pull/{{ build.pull }}|Pull Request #{{ build.pull }}>
+        {{else}}
+          *{{#success build.status}}✔{{ else }}✘{{/success}} {{ uppercasefirst build.status }}: <{{ build.link }}|Build #{{ build.number }}>*
+        {{/if}}
+
+        <https://github.com/{{ repo.owner }}/{{ repo.name }} | {{ repo.name }} > / <https://github.com/{{ repo.owner }}/{{ repo.name }}/commits/{{ build.branch }}|{{ build.branch }}>
+
+        ${DRONE_COMMIT_MESSAGE}
+
+        *Commit:* <https://github.com/{{ repo.owner }}/{{ repo.name }}/commit/{{ build.commit }}|{{ truncate build.commit 8 }}> by ${CI_COMMIT_AUTHOR_NAME}
+
+        *Build duration:* {{ since build.created }}
+    when:
+      status: [success, failure]
+
+---
+kind: secret
+name: slack_webhook_deployment
+get:
+  path: drone
+  name: slack_webhook_deployment
+
