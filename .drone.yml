@@ -47,3 +47,10 @@ steps:
     when:
       status: [success, failure]
 
+---
+kind: secret
+name: slack_webhook_deployment
+get:
+  path: drone
+  name: slack_webhook_deployment
+
