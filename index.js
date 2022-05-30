@@ -9,6 +9,8 @@ const RETRY_TIMEOUT = 1000 * 5 * 60;
 const SEND_TO_DLQ_AFTER = 5;
 const DLQ_NAME = 'DeadLetterQueue';
 
+let connection = null;
+
 module.exports = class RabbitMQ extends EventEmitter {
     constructor(url, exchange = '') {
         super();
@@ -18,7 +20,7 @@ module.exports = class RabbitMQ extends EventEmitter {
                 for (;;) {
                     try {
                         log.debug('Connecting to RabbitMQ...');
-                        const connection = await amqplib.connect(this.url);
+                        if (!connection) connection = await amqplib.connect(this.url);
                         this.channel = await connection.createChannel();
 
                         if (this.exchange) {
@@ -36,6 +38,7 @@ module.exports = class RabbitMQ extends EventEmitter {
                             setImmediate(() => this.emit('close'));
                             if (!err) return;
                             delete this.channel;
+                            connection = null;
                             this.queues = {};
                             connect.call(this, 3000);
                         });
@@ -46,6 +49,7 @@ module.exports = class RabbitMQ extends EventEmitter {
                                 const [, queue] = err.toString().match(/\bfor queue '(?<token>.*)' in vhost\b/i);
                                 await channel.deleteQueue(queue, {});
                                 delete this.channel;
+                                connection = null;
                                 this.queues = {};
                             }
                             this.emit('error', err);
@@ -59,6 +63,7 @@ module.exports = class RabbitMQ extends EventEmitter {
                         }
                         delete this.exchange;
                         delete this.channel;
+                        connection = null;
                         delete this.url;
                         this.emit('error', err);
                     }
@@ -121,6 +126,7 @@ module.exports = class RabbitMQ extends EventEmitter {
         const connection = await this.connection;
         await connection.close();
         delete this.channel;
+        connection = null;
         delete this.exchange;
         delete this.url;
         delete this.connection;
