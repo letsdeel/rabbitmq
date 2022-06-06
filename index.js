@@ -10,7 +10,7 @@ const SEND_TO_DLQ_AFTER = 5;
 const DLQ_NAME = 'DeadLetterQueue';
 
 module.exports = class RabbitMQ extends EventEmitter {
-    constructor(url, exchange = '', connectionName = `${process.env.DD_SERVICE}:${process.env.DD_ENV}`) {
+    constructor(url, exchange = '', connectionName = process.env.DD_SERVICE ? `${process.env.DD_SERVICE}:${process.env.DD_ENV}` : process.env.HOSTNAME) {
         super();
         Object.assign(this, {url, exchange, queues: {}});
         (function connect(retry) {
