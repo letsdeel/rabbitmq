@@ -17,7 +17,7 @@ steps:
       - npm version patch --commit-hooks=false -m "[CI SKIP] Automatically bumped version to %s" --force
       - git remote set-url origin $(git remote -v  | grep push | awk '{print $2}'  | sed "s#https://#https://$${NODE_AUTH_TOKEN}@#")
       - git remote -v
-      - git push
+      - git push origin ${CI_COMMIT_BRANCH}
     environment:
       NODE_AUTH_TOKEN:
         from_secret: git_pat
