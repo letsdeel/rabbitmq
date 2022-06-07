@@ -31,7 +31,6 @@ steps:
         exclude:
           - master
           - dev
-
   - name: bump minor version
     image: 221581667315.dkr.ecr.eu-west-1.amazonaws.com/deel-devops/nodeawscli:16.1
     commands:
