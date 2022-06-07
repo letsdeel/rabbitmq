@@ -10,7 +10,7 @@ const SEND_TO_DLQ_AFTER = 5;
 const DLQ_NAME = 'DeadLetterQueue';
 
 module.exports = class RabbitMQ extends EventEmitter {
-    constructor(url, exchange = '') {
+    constructor(url, exchange = '', connectionName = process.env.DD_SERVICE ? `${process.env.DD_SERVICE}:${process.env.DD_ENV}` : process.env.HOSTNAME) {
         super();
         Object.assign(this, {url, exchange, queues: {}});
         (function connect(retry) {
@@ -18,7 +18,10 @@ module.exports = class RabbitMQ extends EventEmitter {
                 for (;;) {
                     try {
                         log.debug('Connecting to RabbitMQ...');
-                        const connection = await amqplib.connect(this.url);
+                        const connection = await amqplib.connect(
+                            this.url,
+                            {clientProperties: {connection_name: connectionName}}
+                        );
                         this.channel = await connection.createChannel();
 
                         if (this.exchange) {
@@ -88,7 +91,7 @@ module.exports = class RabbitMQ extends EventEmitter {
             let content;
             try {
                 content = msg.content?.toString('utf8');
-            } catch (err){
+            } catch (err) {
                 log.error({err, msg: 'Content not well formatted', content: msg.content});
             }
 
