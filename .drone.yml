@@ -15,7 +15,7 @@ steps:
     commands:
       - export CODEARTIFACT_AUTH_TOKEN=`aws codeartifact get-authorization-token --domain npm --domain-owner 221581667315 --query authorizationToken --output text --region eu-west-1`
       - npm version patch --commit-hooks=false -m "[CI SKIP] Automatically bumped version to %s" --force
-      - git remote set-url origin $(git remote -v  | grep push | awk '{print $2}'  | sed 's#https://#https://${NODE_AUTH_TOKEN}@#')
+      - git remote set-url origin $(git remote -v  | grep push | awk '{print $2}'  | sed "s#https://#https://${NODE_AUTH_TOKEN}@#"")
       - git remote -v
     environment:
       NODE_AUTH_TOKEN:
