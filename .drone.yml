@@ -109,4 +109,9 @@ name: slack_webhook_deployment
 get:
   path: drone
   name: slack_webhook_deployment
-
+---
+kind: secret
+name: git_pat
+get:
+  path: drone
+  name: git_pat
